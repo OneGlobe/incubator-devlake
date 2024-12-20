@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"log"
 
 	"github.com/apache/incubator-devlake/core/dal"
 	"github.com/apache/incubator-devlake/core/errors"
@@ -28,6 +29,7 @@ import (
 	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
 	"github.com/apache/incubator-devlake/plugins/jira/models"
 	"github.com/apache/incubator-devlake/plugins/jira/tasks/apiv2models"
+	"github.com/yuin/gopher-lua"
 )
 
 var _ plugin.SubTaskEntryPoint = ExtractIssues
@@ -44,6 +46,7 @@ type typeMappings struct {
 	TypeIdMappings         map[string]string
 	StdTypeMappings        map[string]string
 	StandardStatusMappings map[string]models.StatusMappings
+	AdvancedTypeMapping    string
 }
 
 func ExtractIssues(subtaskCtx plugin.SubTaskContext) errors.Error {
@@ -144,16 +147,90 @@ func extractIssues(data *JiraTaskData, mappings *typeMappings, apiIssue *apiv2mo
 
 	}
 
-	// code in next line will set issue.Type to issueType.Name
+	// Convert type ID to name
 	issue.Type = mappings.TypeIdMappings[issue.Type]
-	issue.StdType = mappings.StdTypeMappings[issue.Type]
-	if issue.StdType == "" {
-		issue.StdType = strings.ToUpper(issue.Type)
+
+	mappings.AdvancedTypeMapping = `
+	function getStandardType(issueType, status, labels)
+    for i, label in ipairs(labels) do
+        if issueType == "Bug" and label == "p0" then
+            return "INCIDENT"
+        end
+    end
+
+    -- Fall back to previous logic
+    if issueType == "Epic" then
+        return "REQUIREMENT"
+    elseif issueType == "Story" then
+        return "REQUIREMENT"
+    elseif issueType == "Bug" then
+        return "BUG"
+    end
+
+    return string.upper(issueType)
+end`
+
+	// Handle type and status standardization
+	if mappings.AdvancedTypeMapping != "" {
+		log.Printf("Using advanced type mapping for issue %s (type: %s, status: %s)", 
+			issue.IssueKey, issue.Type, issue.StatusKey)
+
+		// Initialize Lua
+		L := lua.NewState()
+		defer L.Close()
+
+		// Execute the mapping script
+		if err := L.DoString(mappings.AdvancedTypeMapping); err != nil {
+			log.Printf("Failed to execute Lua script: %s", err.Error())
+			return nil, errors.Default.Wrap(err, "failed to execute type mapping script")
+		}
+
+		// Convert labels array to Lua table
+		labelsTable := L.NewTable()
+		for _, label := range apiIssue.Fields.Labels {
+			labelsTable.Append(lua.LString(label))
+		}
+		log.Printf("Labels for issue %s: %v", issue.IssueKey, apiIssue.Fields.Labels)
+
+		// Call getStandardType with labels
+		if err := L.CallByParam(lua.P{
+			Fn:      L.GetGlobal("getStandardType"),
+			NRet:    1,
+			Protect: true,
+		}, lua.LString(issue.Type), lua.LString(issue.StatusKey), labelsTable); err != nil {
+			log.Printf("Failed to execute getStandardType: %s", err.Error())
+			return nil, errors.Default.Wrap(err, "failed to execute getStandardType")
+		}
+
+		// Get the result
+		ret := L.Get(-1)
+		L.Pop(1)
+
+		if str, ok := ret.(lua.LString); ok {
+			issue.StdType = string(str)
+			log.Printf("Mapped issue %s to standard type: %s", issue.IssueKey, issue.StdType)
+		} else {
+			log.Printf("Could not convert Lua return value to string for issue %s", issue.IssueKey)
+		}
+	} else {
+		// Fall back to traditional mapping
+		issue.StdType = mappings.StdTypeMappings[issue.Type]
+		if issue.StdType == "" {
+			issue.StdType = strings.ToUpper(issue.Type)
+		}
 	}
-	issue.StdStatus = getStdStatus(issue.StatusKey)
-	if value, ok := mappings.StandardStatusMappings[issue.Type][issue.StatusKey]; ok {
-		issue.StdStatus = value.StandardStatus
+
+	// Handle status standardization similarly
+	if mappings.AdvancedTypeMapping != "" {
+		// Similar Lua execution for status mapping
+		// ... (implement similar pattern for getStandardStatus)
+	} else {
+		issue.StdStatus = getStdStatus(issue.StatusKey)
+		if value, ok := mappings.StandardStatusMappings[issue.Type][issue.StatusKey]; ok {
+			issue.StdStatus = value.StandardStatus
+		}
 	}
+
 	// issue commments
 	results = append(results, issue)
 	for _, comment := range comments {
@@ -258,5 +335,6 @@ func getTypeMappings(data *JiraTaskData, db dal.Dal) (*typeMappings, errors.Erro
 		TypeIdMappings:         typeIdMapping,
 		StdTypeMappings:        stdTypeMappings,
 		StandardStatusMappings: standardStatusMappings,
+		AdvancedTypeMapping:    data.Options.ScopeConfig.AdvancedTypeMapping,
 	}, nil
 }

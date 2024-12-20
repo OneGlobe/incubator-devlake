@@ -6,7 +6,7 @@ require (
 	github.com/cockroachdb/errors v1.11.1
 	github.com/gin-contrib/cors v1.6.0
 	github.com/gin-gonic/gin v1.9.1
-	github.com/go-errors/errors v1.4.2 // indirect
+	github.com/go-errors/errors v1.4.2
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/gocarina/gocsv v0.0.0-20220707092902-b9da1f06c77e
@@ -30,6 +30,7 @@ require (
 	github.com/swaggo/swag v1.16.1
 	github.com/tidwall/gjson v1.14.3
 	github.com/viant/afs v1.16.0
+	github.com/yuin/gopher-lua v1.1.0
 	golang.org/x/crypto v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20221028150844-83b7d23a625f
 	golang.org/x/oauth2 v0.0.0-20210402161424-2e8d93401602
@@ -38,6 +39,7 @@ require (
 	gorm.io/driver/mysql v1.5.1
 	gorm.io/driver/postgres v1.5.2
 	gorm.io/gorm v1.25.5
+
 )
 
 require (

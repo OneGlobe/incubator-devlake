@@ -46,6 +46,7 @@ type JiraScopeConfig struct {
 	StoryPointField            string                 `mapstructure:"storyPointField,omitempty" json:"storyPointField" gorm:"type:varchar(255)"`
 	RemotelinkCommitShaPattern string                 `mapstructure:"remotelinkCommitShaPattern,omitempty" json:"remotelinkCommitShaPattern" gorm:"type:varchar(255)"`
 	RemotelinkRepoPattern      []CommitUrlPattern     `mapstructure:"remotelinkRepoPattern,omitempty" json:"remotelinkRepoPattern" gorm:"type:json;serializer:json"`
+	AdvancedTypeMapping        string                 `mapstructure:"advancedTypeMapping,omitempty" json:"advancedTypeMapping" gorm:"type:text"`
 	TypeMappings               map[string]TypeMapping `mapstructure:"typeMappings,omitempty" json:"typeMappings" gorm:"type:json;serializer:json"`
 	ApplicationType            string                 `mapstructure:"applicationType,omitempty" json:"applicationType" gorm:"type:varchar(255)"`
 }
